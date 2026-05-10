@@ -52,3 +52,48 @@ export type AnomalyFinding = {
   // available normal documents is rendered.
   contextSummary?: string;
 };
+
+export type DocumentSummary = {
+  document_id: string;
+  posting_date: string;
+  company_code: string;
+  currency: string;
+  document_type: BookingLine["document_type"];
+  lines: BookingLine[];
+
+  party_id: string | null;
+  party_name: string | null;
+  party_type: "vendor" | "customer" | null;
+
+  representative_text: string;
+  debit_total: number;
+  meaningful_gl_accounts: string[];
+};
+
+export type DuplicateCandidate = {
+  id: string;
+  documentA: DocumentSummary;
+  documentB: DocumentSummary;
+  confidence: number;
+  severity: "medium" | "high";
+  criteria: string[];
+};
+
+export type BookingManualRule = {
+  id: string;
+  type:
+    | "text_to_account"
+    | "text_to_cost_center"
+    | "vendor_to_account"
+    | "account_to_tax_code";
+
+  title: string;
+  description: string;
+  suggested_check: string;
+
+  confidence: number;
+  support_count: number;
+  total_count: number;
+
+  evidence: BookingLine[];
+};
