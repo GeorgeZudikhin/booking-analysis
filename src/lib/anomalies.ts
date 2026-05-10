@@ -1,3 +1,4 @@
+import { TECHNICAL_ACCOUNTS } from "@/common/constants";
 import type { BookingLine, AnomalyFinding } from "./types";
 
 export function normalizeText(text: string): string {
@@ -33,17 +34,6 @@ export function similarity(a: string, b: string): number {
   if (maxLen === 0) return 1;
   return 1 - levenshtein(a, b) / maxLen;
 }
-
-// Bank, AR, AP, VAT — these always appear regardless of business intent,
-// so we exclude them when deciding which expense/revenue account is "normal".
-const TECHNICAL_ACCOUNTS = new Set([
-  "100000",
-  "100100",
-  "140000",
-  "160000",
-  "157600",
-  "177600",
-]);
 
 const SEVERITY_RANK: Record<AnomalyFinding["severity"], number> = {
   high: 3,
