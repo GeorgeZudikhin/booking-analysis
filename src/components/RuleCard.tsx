@@ -8,7 +8,8 @@ const TYPE_LABELS: Record<BookingManualRule["type"], string> = {
 };
 
 export function RuleCard({ rule }: Readonly<{ rule: BookingManualRule }>) {
-  const hasViolations = rule.violations_count > 0;
+  const hasMismatches = rule.mismatch_count > 0;
+  const mismatchKeys = new Set(rule.mismatch_line_keys);
   return (
     <article className="rounded-xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
       <header className="flex items-start justify-between gap-3">
@@ -20,10 +21,10 @@ export function RuleCard({ rule }: Readonly<{ rule: BookingManualRule }>) {
             <span className="text-xs tabular-nums text-zinc-500">
               {rule.support_count} / {rule.total_count} matches
             </span>
-            {hasViolations && (
+            {hasMismatches && (
               <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium tabular-nums text-amber-800 dark:bg-amber-950 dark:text-amber-200">
-                {rule.violations_count} violation
-                {rule.violations_count === 1 ? "" : "s"}
+                {rule.mismatch_count} mismatch
+                {rule.mismatch_count === 1 ? "" : "es"}
               </span>
             )}
           </div>
@@ -68,10 +69,15 @@ export function RuleCard({ rule }: Readonly<{ rule: BookingManualRule }>) {
             </tr>
           </thead>
           <tbody>
-            {rule.evidence.map((l) => (
+            {rule.evidence.map((l) => {
+              const isMismatch = mismatchKeys.has(`${l.document_id}#${l.line_id}`);
+              const rowClass = isMismatch
+                ? "bg-amber-50/70 border-y border-amber-300 dark:bg-amber-950/25 dark:border-amber-700"
+                : "border-b border-zinc-100 dark:border-zinc-800";
+              return (
               <tr
                 key={`${l.document_id}-${l.line_id}`}
-                className="border-b border-zinc-100 dark:border-zinc-800"
+                className={rowClass}
               >
                 <td className="py-2 pr-3 font-mono">
                   {l.document_id}/{l.line_id}
@@ -88,7 +94,8 @@ export function RuleCard({ rule }: Readonly<{ rule: BookingManualRule }>) {
                 </td>
                 <td className="py-2 pr-3 font-mono">{l.tax_code ?? "—"}</td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>

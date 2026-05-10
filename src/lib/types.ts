@@ -96,7 +96,11 @@ export type BookingManualRule = {
   total_count: number;
   // total_count - support_count: lines that match the rule's input but
   // diverge from the dominant output. These are the actionable cases.
-  violations_count: number;
+  mismatch_count: number;
 
   evidence: BookingLine[];
+  // Subset of `evidence` (encoded as `${document_id}#${line_id}`) that
+  // *broke* from the rule. The card renders these rows highlighted so a
+  // reviewer can see the mismatching postings, not just the supporting ones.
+  mismatch_line_keys: string[];
 };

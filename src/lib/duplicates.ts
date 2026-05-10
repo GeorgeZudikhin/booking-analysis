@@ -1,14 +1,6 @@
 import type { BookingLine, DocumentSummary, DuplicateCandidate } from "./types";
 import { normalizeText, similarity } from "./anomalies";
-
-const TECHNICAL_ACCOUNTS = new Set([
-  "100000",
-  "100100",
-  "140000",
-  "160000",
-  "157600",
-  "177600",
-]);
+import { TECHNICAL_ACCOUNTS } from "@/common/constants";
 
 const INVOICE_TYPES = new Set<BookingLine["document_type"]>([
   "vendor_invoice",
@@ -185,28 +177,66 @@ function orderPair(
 
 // ---------- main entry point ----------
 
+// Bucketing key — documents in different buckets cannot pass eligibility,
+// so we never need to compare them. Returns null for documents that would
+// fail eligibility on their own (no party, not invoice-like).
+function bucketKey(d: DocumentSummary): string | null {
+  if (d.party_id == null) return null;
+  if (!INVOICE_TYPES.has(d.document_type)) return null;
+  return `${d.company_code}|${d.currency}|${d.party_id}`;
+}
+
+function bucketDocuments(
+  docs: DocumentSummary[]
+): Map<string, DocumentSummary[]> {
+  const out = new Map<string, DocumentSummary[]>();
+  for (const d of docs) {
+    const k = bucketKey(d);
+    if (k == null) continue;
+    let bucket = out.get(k);
+    if (!bucket) {
+      bucket = [];
+      out.set(k, bucket);
+    }
+    bucket.push(d);
+  }
+  return out;
+}
+
+function buildCandidate(
+  a: DocumentSummary,
+  b: DocumentSummary
+): DuplicateCandidate | null {
+  if (!isEligiblePair(a, b)) return null;
+  const { score, criteria } = scorePair(a, b);
+  if (score < MIN_CONFIDENCE) return null;
+  const [first, second] = orderPair(a, b);
+  return {
+    id: `dup:${first.document_id}-${second.document_id}`,
+    documentA: first,
+    documentB: second,
+    confidence: score,
+    severity: score >= HIGH_CONFIDENCE ? "high" : "medium",
+    criteria,
+  };
+}
+
 export function detectDuplicateBookings(
   lines: BookingLine[]
 ): DuplicateCandidate[] {
   const docs = summarizeAllDocuments(lines);
+  const buckets = bucketDocuments(docs);
   const candidates: DuplicateCandidate[] = [];
 
-  for (let i = 0; i < docs.length; i += 1) {
-    for (let j = i + 1; j < docs.length; j += 1) {
-      const a = docs[i];
-      const b = docs[j];
-      if (!isEligiblePair(a, b)) continue;
-      const { score, criteria } = scorePair(a, b);
-      if (score < MIN_CONFIDENCE) continue;
-      const [first, second] = orderPair(a, b);
-      candidates.push({
-        id: `dup:${first.document_id}-${second.document_id}`,
-        documentA: first,
-        documentB: second,
-        confidence: score,
-        severity: score >= HIGH_CONFIDENCE ? "high" : "medium",
-        criteria,
-      });
+  // Only compare documents that already share company / currency / party.
+  // Anything across buckets would be rejected by isEligiblePair anyway.
+  for (const bucket of buckets.values()) {
+    if (bucket.length < 2) continue;
+    for (let i = 0; i < bucket.length; i += 1) {
+      for (let j = i + 1; j < bucket.length; j += 1) {
+        const candidate = buildCandidate(bucket[i], bucket[j]);
+        if (candidate) candidates.push(candidate);
+      }
     }
   }
 

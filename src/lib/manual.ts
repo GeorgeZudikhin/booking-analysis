@@ -6,7 +6,8 @@ const MIN_OCCURRENCES = 5;
 const MIN_RATIO = 0.75;
 const MAX_PER_TYPE = 4;
 const MAX_RULES = 10;
-const MAX_EVIDENCE = 5;
+const MAX_SUPPORT_EVIDENCE = 3;
+const MAX_MISMATCH_EVIDENCE = 3;
 
 function isMeaningful(line: BookingLine): boolean {
   return !TECHNICAL_ACCOUNTS.has(line.gl_account);
@@ -39,7 +40,7 @@ function dominantValue(
 }
 
 // Pick up to `n` representative lines, each from a distinct document.
-function pickEvidence(lines: BookingLine[], n = MAX_EVIDENCE): BookingLine[] {
+function pickEvidence(lines: BookingLine[], n: number): BookingLine[] {
   const seen = new Set<string>();
   const out: BookingLine[] = [];
   for (const l of lines) {
@@ -49,6 +50,31 @@ function pickEvidence(lines: BookingLine[], n = MAX_EVIDENCE): BookingLine[] {
     out.push(l);
   }
   return out;
+}
+
+function lineKey(l: BookingLine): string {
+  return `${l.document_id}#${l.line_id}`;
+}
+
+// Build the evidence list for a rule: a sample of lines that follow the
+// dominant pattern *plus* a sample of lines that broke from it (mismatches).
+// The mismatch keys come back so the card can highlight those rows.
+function buildEvidence(
+  allLines: BookingLine[],
+  supportLines: BookingLine[],
+  pickValue: (l: BookingLine) => string | null,
+  dominantValue: string
+): { evidence: BookingLine[]; mismatch_line_keys: string[] } {
+  const support = pickEvidence(supportLines, MAX_SUPPORT_EVIDENCE);
+  const mismatches = allLines.filter((l) => {
+    const v = pickValue(l);
+    return v != null && v !== dominantValue;
+  });
+  const mismatchSample = pickEvidence(mismatches, MAX_MISMATCH_EVIDENCE);
+  return {
+    evidence: [...support, ...mismatchSample],
+    mismatch_line_keys: mismatchSample.map(lineKey),
+  };
 }
 
 function groupBy<K>(
@@ -94,8 +120,8 @@ function generateTextToAccountRules(lines: BookingLine[]): BookingManualRule[] {
       confidence,
       support_count: dom.count,
       total_count: ls.length,
-      violations_count: ls.length - dom.count,
-      evidence: pickEvidence(supportLines),
+      mismatch_count: ls.length - dom.count,
+      ...buildEvidence(ls, supportLines, (l) => l.gl_account, dom.value),
     });
   }
   return out;
@@ -125,8 +151,8 @@ function generateTextToCostCenterRules(
       confidence,
       support_count: dom.count,
       total_count: dom.totalNonNull,
-      violations_count: dom.totalNonNull - dom.count,
-      evidence: pickEvidence(supportLines),
+      mismatch_count: dom.totalNonNull - dom.count,
+      ...buildEvidence(ls, supportLines, (l) => l.cost_center, dom.value),
     });
   }
   return out;
@@ -158,8 +184,8 @@ function generateVendorToAccountRules(
       confidence,
       support_count: dom.count,
       total_count: ls.length,
-      violations_count: ls.length - dom.count,
-      evidence: pickEvidence(supportLines),
+      mismatch_count: ls.length - dom.count,
+      ...buildEvidence(ls, supportLines, (l) => l.gl_account, dom.value),
     });
   }
   return out;
@@ -191,8 +217,8 @@ function generateAccountToTaxCodeRules(
       confidence,
       support_count: dom.count,
       total_count: dom.totalNonNull,
-      violations_count: dom.totalNonNull - dom.count,
-      evidence: pickEvidence(supportLines),
+      mismatch_count: dom.totalNonNull - dom.count,
+      ...buildEvidence(ls, supportLines, (l) => l.tax_code, dom.value),
     });
   }
   return out;
@@ -205,9 +231,9 @@ function generateAccountToTaxCodeRules(
 // reviewer might want to look. Within each tier we then prefer rules with
 // more supporting evidence (and higher confidence as a final tiebreaker).
 function compareRules(a: BookingManualRule, b: BookingManualRule): number {
-  const aHasViol = a.violations_count > 0 ? 1 : 0;
-  const bHasViol = b.violations_count > 0 ? 1 : 0;
-  if (aHasViol !== bHasViol) return bHasViol - aHasViol;
+  const aHasMismatch = a.mismatch_count > 0 ? 1 : 0;
+  const bHasMismatch = b.mismatch_count > 0 ? 1 : 0;
+  if (aHasMismatch !== bHasMismatch) return bHasMismatch - aHasMismatch;
   if (b.support_count !== a.support_count) return b.support_count - a.support_count;
   return b.confidence - a.confidence;
 }
