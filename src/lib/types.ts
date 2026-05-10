@@ -94,6 +94,9 @@ export type BookingManualRule = {
   confidence: number;
   support_count: number;
   total_count: number;
+  // total_count - support_count: lines that match the rule's input but
+  // diverge from the dominant output. These are the actionable cases.
+  violations_count: number;
 
   evidence: BookingLine[];
 };

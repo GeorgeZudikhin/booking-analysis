@@ -1,13 +1,15 @@
 import { AnomalyCard } from "@/components/AnomalyCard";
 import { DuplicateCard } from "@/components/DuplicateCard";
+import { RuleCard } from "@/components/RuleCard";
 import { Tabs } from "@/components/Tabs";
 import { detectAnomalies } from "@/lib/anomalies";
 import { bookings } from "@/lib/bookings";
 import { detectDuplicateBookings } from "@/lib/duplicates";
+import { generateBookingManualRules } from "@/lib/manual";
 
 function Stat({ label, value }: Readonly<{ label: string; value: number }>) {
   return (
-    <div className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+    <div className="rounded-xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
       <div className="text-xs uppercase tracking-wide text-zinc-500">
         {label}
       </div>
@@ -41,9 +43,14 @@ function EmptyState({ message }: Readonly<{ message: string }>) {
 export default function Home() {
   const findings = detectAnomalies(bookings);
   const duplicates = detectDuplicateBookings(bookings);
+  const rules = generateBookingManualRules(bookings);
 
   const highAnomalies = findings.filter((f) => f.severity === "high").length;
   const highDuplicates = duplicates.filter((d) => d.severity === "high").length;
+  const avgRuleConfidence =
+    rules.length > 0
+      ? Math.round(rules.reduce((s, r) => s + r.confidence, 0) / rules.length)
+      : 0;
 
   const anomaliesPanel = (
     <>
@@ -61,6 +68,29 @@ export default function Home() {
           findings.map((finding) => (
             <AnomalyCard key={finding.id} finding={finding} />
           ))
+        )}
+      </div>
+    </>
+  );
+
+  const manualPanel = (
+    <>
+      <StatRow
+        items={[
+          { label: "Total booking lines", value: bookings.length },
+          { label: "Rule suggestions", value: rules.length },
+          { label: "Avg. confidence (%)", value: avgRuleConfidence },
+        ]}
+      />
+      <p className="mb-4 text-sm text-zinc-500 dark:text-zinc-400">
+        These rule suggestions are inferred from generated historical postings.
+        They are descriptive patterns, not authoritative accounting policy.
+      </p>
+      <div className="space-y-4">
+        {rules.length === 0 ? (
+          <EmptyState message="No rule suggestions could be inferred." />
+        ) : (
+          rules.map((rule) => <RuleCard key={rule.id} rule={rule} />)
         )}
       </div>
     </>
@@ -117,6 +147,12 @@ export default function Home() {
               label: "Duplicates",
               count: duplicates.length,
               content: duplicatesPanel,
+            },
+            {
+              key: "manual",
+              label: "Booking Manual",
+              count: rules.length,
+              content: manualPanel,
             },
           ]}
         />
